@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/go-redis/redis"
 	"log"
@@ -31,17 +32,18 @@ func (m Message) MarshalBinary() ([]byte, error) {
 	return json.Marshal(m)
 }
 func main() {
+	ctx := context.Background()
 	var err error
 
 	// create client and ping redis
 	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", Password: "", DB: 0})
-	if _, err = client.Ping().Result(); err != nil {
+	if _, err = client.Ping(ctx).Result(); err != nil {
 		log.Fatalf("error creating redis client %s", err)
 	}
 
 	// subscribe to the required channels
-	pubsub := client.Subscribe(DeliveryChannel, ReplyChannel)
-	if _, err = pubsub.Receive(); err != nil {
+	pubsub := client.Subscribe(ctx, DeliveryChannel, ReplyChannel)
+	if _, err = pubsub.Receive(ctx); err != nil {
 		log.Fatalf("error subscribing %s", err)
 	}
 	defer func() { _ = pubsub.Close() }()
@@ -71,7 +73,7 @@ func main() {
 					m.Action = ActionError // To simulate an error or a failure in the process
 					m.Service = ServiceDelivery
 					log.Printf("delivery message is %#v", m)
-					if err = client.Publish(ReplyChannel, m).Err(); err != nil {
+					if err = client.Publish(ctx, ReplyChannel, m).Err(); err != nil {
 						log.Printf("error publishing error-message to %s channel %s", ReplyChannel, err)
 					}
 					log.Printf("error message published to channel :%s", ReplyChannel)

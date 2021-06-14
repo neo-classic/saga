@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -46,19 +47,24 @@ type Orchestrator struct {
 }
 
 func main() {
+	ctx := context.Background()
 	var err error
 	// create client and ping redis
-	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", Password: "", DB: 0})
-	if _, err = client.Ping().Result(); err != nil {
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
+	})
+	if _, err = client.Ping(ctx).Result(); err != nil {
 		log.Fatalf("error creating redis client %s", err)
 	}
 
 	// initialize and start the orchestrator in the background
 	o := &Orchestrator{
 		c: client,
-		r: client.Subscribe(PaymentChannel, OrderChannel, DeliveryChannel, RestaurantChannel, ReplyChannel),
+		r: client.Subscribe(ctx, PaymentChannel, OrderChannel, DeliveryChannel, RestaurantChannel, ReplyChannel),
 	}
-	go o.start()
+	go o.start(ctx)
 
 	// define ServeMux and start the server
 	mux := http.NewServeMux()
@@ -70,17 +76,18 @@ func main() {
 
 // create the order - step 1 in the order processing pipeline
 func (o Orchestrator) create(writer http.ResponseWriter, request *http.Request) {
+	ctx := context.Background()
 	if _, err := fmt.Fprintf(writer, "responding"); err != nil {
 		log.Printf("error while writing %s", err.Error())
 	}
 	m := Message{ID: faker.Bitcoin().Address(), Message: "Something"}
-	o.next(OrderChannel, ServiceOrder, m)
+	o.next(ctx, OrderChannel, ServiceOrder, m)
 }
 
 // start the goroutine to orchestrate the process
-func (o Orchestrator) start() {
+func (o Orchestrator) start(ctx context.Context) {
 	var err error
-	if _, err = o.r.Receive(); err != nil {
+	if _, err = o.r.Receive(ctx); err != nil {
 		log.Fatalf("error setting up redis %s \n", err)
 	}
 	ch := o.r.Channel()
@@ -103,18 +110,18 @@ func (o Orchestrator) start() {
 				// if there is any error, just rollback
 				if m.Action != ActionDone {
 					log.Printf("Rolling back transaction with id %s", m.ID)
-					o.rollback(m)
+					o.rollback(ctx, m)
 					continue
 				}
 
 				// else start the next stage
 				switch m.Service {
 				case ServiceOrder:
-					o.next(PaymentChannel, ServicePayment, m)
+					o.next(ctx, PaymentChannel, ServicePayment, m)
 				case ServicePayment:
-					o.next(RestaurantChannel, ServiceRestaurant, m)
+					o.next(ctx, RestaurantChannel, ServiceRestaurant, m)
 				case ServiceRestaurant:
-					o.next(DeliveryChannel, ServiceDelivery, m)
+					o.next(ctx, DeliveryChannel, ServiceDelivery, m)
 				case ServiceDelivery:
 					log.Println("Food Delivered")
 				}
@@ -125,34 +132,34 @@ func (o Orchestrator) start() {
 
 // next triggers start operation on the other micro-services
 // based on the channel and service
-func (o Orchestrator) next(channel, service string, message Message) {
+func (o Orchestrator) next(ctx context.Context, channel, service string, message Message) {
 	var err error
 	message.Action = ActionStart
 	message.Service = service
-	if err = o.c.Publish(channel, message).Err(); err != nil {
+	if err = o.c.Publish(ctx, channel, message).Err(); err != nil {
 		log.Printf("error publishing start-message to %s channel", channel)
 	}
 	log.Printf("start message published to channel :%s", channel)
 }
 
 // rollback instructs the other micro-services to rollback the transaction
-func (o Orchestrator) rollback(m Message) {
+func (o Orchestrator) rollback(ctx context.Context, m Message) {
 	var err error
 	message := Message{
 		ID:      m.ID, // ID is mandatory
 		Action:  ActionRollback,
 		Message: "May day !! May day!!",
 	}
-	if err = o.c.Publish(OrderChannel, message).Err(); err != nil {
+	if err = o.c.Publish(ctx, OrderChannel, message).Err(); err != nil {
 		log.Printf("error publishing rollback message to %s channel", OrderChannel)
 	}
-	if err = o.c.Publish(PaymentChannel, message).Err(); err != nil {
+	if err = o.c.Publish(ctx, PaymentChannel, message).Err(); err != nil {
 		log.Printf("error publishing rollback message to %s channel", PaymentChannel)
 	}
-	if err = o.c.Publish(RestaurantChannel, message).Err(); err != nil {
+	if err = o.c.Publish(ctx, RestaurantChannel, message).Err(); err != nil {
 		log.Printf("error publishing rollback message to %s channel", RestaurantChannel)
 	}
-	if err = o.c.Publish(DeliveryChannel, message).Err(); err != nil {
+	if err = o.c.Publish(ctx, DeliveryChannel, message).Err(); err != nil {
 		log.Printf("error publishing rollback message to %s channel", DeliveryChannel)
 	}
 }

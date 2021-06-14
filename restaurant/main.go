@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/go-redis/redis"
 	"log"
@@ -31,14 +32,15 @@ func (m Message) MarshalBinary() ([]byte, error) {
 }
 
 func main() {
+	ctx := context.Background()
 	var err error
 	client := redis.NewClient(&redis.Options{Addr: "localhost:6379", Password: "", DB: 0})
-	if _, err = client.Ping().Result(); err != nil {
+	if _, err = client.Ping(ctx).Result(); err != nil {
 		log.Fatalf("error creating redis client %s", err)
 	}
 
-	pubsub := client.Subscribe(RestaurantChannel, ReplyChannel)
-	if _, err = pubsub.Receive(); err != nil {
+	pubsub := client.Subscribe(ctx, RestaurantChannel, ReplyChannel)
+	if _, err = pubsub.Receive(ctx); err != nil {
 		log.Fatalf("error subscribing %s", err)
 	}
 	defer func() { _ = pubsub.Close() }()
@@ -64,7 +66,7 @@ func main() {
 				// Happy Flow
 				if m.Action == ActionStart {
 					m.Action = ActionDone
-					if err = client.Publish(ReplyChannel, m).Err(); err != nil {
+					if err = client.Publish(ctx, ReplyChannel, m).Err(); err != nil {
 						log.Printf("error publishing done-message to %s channel", ReplyChannel)
 					}
 					log.Printf("done message published to channel :%s", ReplyChannel)
