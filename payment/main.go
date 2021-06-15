@@ -3,33 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/go-redis/redis"
 	"log"
-	"syreclabs.com/go/faker"
 	"time"
+
+	"github.com/go-redis/redis"
+	"github.com/neo-classic/saga/domain"
+	"syreclabs.com/go/faker"
 )
-
-const (
-	PaymentChannel string = "PaymentChannel"
-	ReplyChannel   string = "ReplyChannel"
-	ActionStart    string = "Start"
-	ActionDone     string = "DoneMsg"
-	ActionError    string = "ErrorMsg"
-	ActionRollback string = "RollbackMsg"
-)
-
-// Message represents the payload sent over redis pub/sub
-type Message struct {
-	ID      string `json:"id"`
-	Service string `json:"service"`
-	Action  string `json:"action"`
-	Message string `json:"message"`
-}
-
-// MarshalBinary should be implemented to send message to redis
-func (m Message) MarshalBinary() ([]byte, error) {
-	return json.Marshal(m)
-}
 
 func main() {
 	ctx := context.Background()
@@ -41,7 +21,7 @@ func main() {
 	}
 
 	// subscribe to the required channels
-	pubsub := client.Subscribe(ctx, PaymentChannel, ReplyChannel)
+	pubsub := client.Subscribe(ctx, domain.PaymentChannel, domain.ReplyChannel)
 	if _, err = pubsub.Receive(ctx); err != nil {
 		log.Fatalf("error subscribing %s", err)
 	}
@@ -52,7 +32,7 @@ func main() {
 	for {
 		select {
 		case msg := <-ch:
-			m := Message{}
+			m := domain.Message{}
 			err := json.Unmarshal([]byte(msg.Payload), &m)
 			if err != nil {
 				log.Println(err)
@@ -60,7 +40,7 @@ func main() {
 			}
 
 			switch msg.Channel {
-			case PaymentChannel:
+			case domain.PaymentChannel:
 				log.Printf("recieved message with id %s ", m.ID)
 
 				// random sleep to simulate some work in action
@@ -68,16 +48,16 @@ func main() {
 				time.Sleep(time.Duration(d) * time.Second)
 
 				// Happy Flow
-				if m.Action == ActionStart {
-					m.Action = ActionDone
-					if err = client.Publish(ctx, ReplyChannel, m).Err(); err != nil {
-						log.Printf("error publishing done-message to %s channel", ReplyChannel)
+				if m.Action == domain.ActionStart {
+					m.Action = domain.ActionDone
+					if err = client.Publish(ctx, domain.ReplyChannel, m).Err(); err != nil {
+						log.Printf("error publishing done-message to %s channel", domain.ReplyChannel)
 					}
-					log.Printf("done message published to channel :%s", ReplyChannel)
+					log.Printf("done message published to channel :%s", domain.ReplyChannel)
 				}
 
 				// Rollback flow
-				if m.Action == ActionRollback {
+				if m.Action == domain.ActionRollback {
 					log.Printf("rolling back transaction with ID :%s", m.ID)
 				}
 

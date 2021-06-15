@@ -3,34 +3,14 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/go-redis/redis"
 	"log"
-	"syreclabs.com/go/faker"
 	"time"
+
+	"github.com/go-redis/redis"
+	"github.com/neo-classic/saga/domain"
+	"syreclabs.com/go/faker"
 )
 
-const (
-	DeliveryChannel string = "DeliveryChannel"
-	ReplyChannel    string = "ReplyChannel"
-	ServiceDelivery string = "Delivery"
-	ActionStart     string = "Start"
-	ActionDone      string = "DoneMsg"
-	ActionError     string = "ErrorMsg"
-	ActionRollback  string = "RollbackMsg"
-)
-
-// Message represents the payload sent over redis pub/sub
-type Message struct {
-	ID      string `json:"id"`
-	Service string `json:"service"`
-	Action  string `json:"action"`
-	Message string `json:"message"`
-}
-
-// MarshalBinary should be implemented to send message to redis
-func (m Message) MarshalBinary() ([]byte, error) {
-	return json.Marshal(m)
-}
 func main() {
 	ctx := context.Background()
 	var err error
@@ -42,7 +22,7 @@ func main() {
 	}
 
 	// subscribe to the required channels
-	pubsub := client.Subscribe(ctx, DeliveryChannel, ReplyChannel)
+	pubsub := client.Subscribe(ctx, domain.DeliveryChannel, domain.ReplyChannel)
 	if _, err = pubsub.Receive(ctx); err != nil {
 		log.Fatalf("error subscribing %s", err)
 	}
@@ -53,7 +33,7 @@ func main() {
 	for {
 		select {
 		case msg := <-ch:
-			m := Message{}
+			m := domain.Message{}
 			err := json.Unmarshal([]byte(msg.Payload), &m)
 			if err != nil {
 				log.Println(err)
@@ -61,7 +41,7 @@ func main() {
 			}
 
 			switch msg.Channel {
-			case DeliveryChannel:
+			case domain.DeliveryChannel:
 				// random sleep to simulate some work in action
 				log.Printf("recieved message with id %s ", m.ID)
 				d := faker.RandomInt(1, 3)
@@ -69,17 +49,17 @@ func main() {
 
 				// IMPORTANT : To demonstrate a rollback, we send the Action as Error to the orchestrator
 				// once orchestrator receives this error message, it asks all the services to rollback
-				if m.Action == ActionStart {
-					m.Action = ActionError // To simulate an error or a failure in the process
-					m.Service = ServiceDelivery
+				if m.Action == domain.ActionStart {
+					m.Action = domain.ActionError // To simulate an error or a failure in the process
+					m.Service = domain.ServiceDelivery
 					log.Printf("delivery message is %#v", m)
-					if err = client.Publish(ctx, ReplyChannel, m).Err(); err != nil {
-						log.Printf("error publishing error-message to %s channel %s", ReplyChannel, err)
+					if err = client.Publish(ctx, domain.ReplyChannel, m).Err(); err != nil {
+						log.Printf("error publishing error-message to %s channel %s", domain.ReplyChannel, err)
 					}
-					log.Printf("error message published to channel :%s", ReplyChannel)
+					log.Printf("error message published to channel :%s", domain.ReplyChannel)
 				}
 
-				if m.Action == ActionRollback {
+				if m.Action == domain.ActionRollback {
 					log.Printf("rolling back transaction with ID :%s", m.ID)
 				}
 
