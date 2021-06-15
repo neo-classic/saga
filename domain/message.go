@@ -8,14 +8,16 @@ const (
 	DeliveryChannel   string = "DeliveryChannel"
 	RestaurantChannel string = "RestaurantChannel"
 	ReplyChannel      string = "ReplyChannel"
+
 	ServicePayment    string = "Payment"
 	ServiceOrder      string = "Order"
 	ServiceRestaurant string = "Restaurant"
 	ServiceDelivery   string = "Delivery"
-	ActionStart       string = "Start"
-	ActionDone        string = "DoneMsg"
-	ActionError       string = "ErrorMsg"
-	ActionRollback    string = "RollbackMsg"
+
+	ActionStart    string = "Start"
+	ActionDone     string = "DoneMsg"
+	ActionError    string = "ErrorMsg"
+	ActionRollback string = "RollbackMsg"
 )
 
 // Message represents the payload sent over redis pub/sub

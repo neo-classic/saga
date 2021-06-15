@@ -6,7 +6,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 	"github.com/neo-classic/saga/domain"
 	"syreclabs.com/go/faker"
 )
